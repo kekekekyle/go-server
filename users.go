@@ -79,12 +79,15 @@ func (cfg *apiConfig) handleUpdateUser (w http.ResponseWriter, r *http.Request) 
     type returnedUser struct {
       Id int `json:"id"`
       Email string `json:"email"`
-      Password string `json:"-"`
-      ExpiresInSeconds int `json:"-"`
-      Token string `json:"-"`
+      RefreshToken string `json:"refresh_token"`
+    }
+    returnUser := returnedUser{
+      Id: updateUser.Id,
+      Email: updateUser.Email,
+      RefreshToken: updateUser.RefreshToken.RefreshToken,
     }
 
-    data, err := json.Marshal(returnedUser(updateUser))
+    data, err := json.Marshal(returnUser)
     if err != nil {
       w.WriteHeader(500)
       return
@@ -139,6 +142,8 @@ func (cfg *apiConfig) handleCreateUser (w http.ResponseWriter, r *http.Request) 
     Password string `json:"-"`
     ExpiresInSeconds int `json:"-"`
     Token string `json:"-"`
+    RefreshToken database.RefreshToken `json:"-"`
+    IsChirpyRed bool `json:"is_chirpy_red"`
   }
 
   data, err := json.Marshal(returnedUser(createdUser))

@@ -14,6 +14,7 @@ type apiConfig struct {
   fileserverHits int
   database *database.DB
   jwtSecret string
+  polkaApiKey string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc (next http.Handler) http.Handler {
@@ -45,15 +46,6 @@ func handleHealth (w http.ResponseWriter, r *http.Request) {
   w.Write([]byte("OK"))
 }
 
-type handleReset struct {
-  api *apiConfig
-}
-
-type ResetHandler interface {
-  ServeHTTP(http.ResponseWriter, *http.Request)
-  resetFileserverHits(*apiConfig)
-}
-
 // deleteDB deletes the database file
 func deleteDB(path string) error {
   if err := os.Remove(path); err != nil {
@@ -69,6 +61,7 @@ func main() {
 
   godotenv.Load()
   jwtSecret := os.Getenv("JWT_SECRET")
+  polkaApiKey := os.Getenv("POLKA_API_KEY")
 
   debug := flag.Bool("debug", false, "Enable debug mode")
   flag.Parse()
@@ -85,6 +78,7 @@ func main() {
     fileserverHits: 0,
     database: database,
     jwtSecret: jwtSecret,
+    polkaApiKey: polkaApiKey,
   }
 
 	mux := http.NewServeMux()
@@ -93,12 +87,16 @@ func main() {
   mux.HandleFunc("GET /api/healthz", handleHealth)
   mux.HandleFunc("GET /admin/metrics", apiCfg.getMetricsHandler)
   mux.HandleFunc("/api/reset", apiCfg.resetMetricsHandler)
-  mux.HandleFunc("POST /api/chirps", apiCfg.handleCreateChirps)
+  mux.Handle("POST /api/chirps", apiCfg.authenticate(&HandleCreateChirps{api: apiCfg}))
   mux.HandleFunc("GET /api/chirps", apiCfg.handleGetChirps)
   mux.HandleFunc("GET /api/chirps/{chirpId}", apiCfg.handleGetChirpById)
+  mux.Handle("DELETE /api/chirps/{chirpId}", apiCfg.authenticate(&HandleDeleteChirps{api: apiCfg}))
   mux.HandleFunc("POST /api/users", apiCfg.handleCreateUser)
   mux.HandleFunc("PUT /api/users", apiCfg.handleUpdateUser)
   mux.HandleFunc("POST /api/login", apiCfg.handleLogin)
+  mux.HandleFunc("POST /api/refresh", apiCfg.handleRefreshToken)
+  mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
+  mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlePolkaWebhooks)
 
 	srv := &http.Server{
 		Addr:    ":" + port,

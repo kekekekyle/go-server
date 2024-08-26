@@ -13,17 +13,25 @@ type DB struct {
 	mux  *sync.RWMutex
 }
 
+type RefreshToken struct {
+  RefreshToken string `json:"refresh_token"`
+  ExpiresAt int `json:"expires_at"`
+}
+
 type User struct {
   Id int `json:"id"`
   Email string `json:"email"`
   Password string `json:"password"`
   ExpiresInSeconds int `json:"expires_in_seconds"`
   Token string `json:"-"`
+  RefreshToken RefreshToken `json:"refresh_token"`
+  IsChirpyRed bool `json:"is_chirpy_red"`
 }
 
 type Chirp struct {
   Id int `json:"id"`
   Body string `json:"body"`
+  AuthorId int `json:"author_id"`
 }
 
 type DBStructure struct {
@@ -94,6 +102,59 @@ func (db *DB) UpdateUser(user User) (User, error) {
 	return user, nil
 }
 
+func (db *DB) DeleteRefreshToken(refreshToken string) (error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+  for i, user := range dbStructure.Users {
+    if user.RefreshToken.RefreshToken == refreshToken {
+      user.RefreshToken = RefreshToken{}
+      dbStructure.Users[i] = user
+    }
+  }
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *DB) FindRefreshToken(refreshToken string) (User, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+  for _, user := range dbStructure.Users {
+    if user.RefreshToken.RefreshToken == refreshToken {
+      return user, nil
+    }
+  }
+
+	return User{}, nil
+}
+
+func (db *DB) CreateRefreshToken(user User, refreshToken RefreshToken) (RefreshToken, error) {
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return RefreshToken{}, err
+	}
+
+  foundUser := dbStructure.Users[user.Id]
+  foundUser.RefreshToken = refreshToken
+
+	err = db.writeDB(dbStructure)
+	if err != nil {
+		return RefreshToken{}, err
+	}
+
+	return refreshToken, nil
+}
+
 func (db *DB) CreateUser(user User) (User, error) {
 	dbStructure, err := db.loadDB()
 	if err != nil {
@@ -120,8 +181,25 @@ func (db *DB) CreateUser(user User) (User, error) {
 	return user, nil
 }
 
+func (db *DB) DeleteChirp(id int) (error) {
+  dbStructure, err := db.loadDB()
+  if err != nil {
+    return err
+  }
+
+  chirps := []Chirp{}
+  for _, chirp := range dbStructure.Chirps {
+    if chirp.Id != id {
+      chirps = append(chirps, chirp)
+    }
+  }
+
+  sort.Slice(chirps, func(i, j int) bool { return chirps[i].Id < chirps[j].Id})
+  return nil
+}
+
 // CreateChirp creates a new chirp and saves it to disk
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(body string, author_id int) (Chirp, error) {
 	dbStructure, err := db.loadDB()
 	if err != nil {
 		return Chirp{}, err
@@ -131,6 +209,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 	chirp := Chirp{
 		Id: id,
 		Body: body,
+    AuthorId: author_id,
 	}
 	dbStructure.Chirps[id] = chirp
 
@@ -153,8 +232,6 @@ func (db *DB) GetChirps() ([]Chirp, error) {
   for _, chirp := range dbStructure.Chirps {
     chirps = append(chirps, chirp)
   }
-
-  sort.Slice(chirps, func(i, j int) bool { return chirps[i].Id < chirps[j].Id})
 
   return chirps, nil
 }
